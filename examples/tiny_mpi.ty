@@ -1,0 +1,104 @@
+"""
+Tiny example network useful for testing components.
+
+$Id: tiny.ty 10778 2009-11-17 23:33:16Z KKudryavtsev $
+"""
+__version__='$Revision: 10778 $'
+
+
+from math import pi, sqrt
+
+import numpy
+import param
+
+
+
+from topo import learningfn
+from topo import numbergen
+from topo import transferfn
+from topo import pattern
+from topo import projection
+from topo import responsefn
+from topo import sheet
+
+
+import topo.learningfn.projfn 
+import topo.transferfn.projfn
+import topo.pattern.random
+import topo.responsefn.optimized 
+import topo.sheet.lissom
+
+
+from topo.learningfn.tiny_mpi import SampleHebbian
+
+
+#from topo.base.functionfamily import LearningFn
+
+
+# Parameters that can be passed on the command line using -p
+from topo.misc.commandline import global_params as p
+p.add(
+    retina_density=param.Number(default=24.0,bounds=(0,None),
+        inclusive_bounds=(False,True),doc="""
+        The nominal_density to use for the retina."""),
+
+    cortex_density=param.Number(default=5.0,bounds=(0,None),
+        inclusive_bounds=(False,True),doc="""
+        The nominal_density to use for V1."""),
+    
+    mpi=param.Number(default=False,doc="""Use MPI flag""")
+    )
+
+
+
+
+
+# Input pattern
+gaussian_generator = pattern.Gaussian(
+    x=numbergen.UniformRandom(lbound=-0.8,ubound=0.8,seed=12),
+    y=numbergen.UniformRandom(lbound=-0.8,ubound=0.8,seed=34),
+    orientation=numbergen.UniformRandom(lbound=-pi,ubound=pi,seed=56),
+    size = 2*0.3*1.5/7.0,
+    aspect_ratio = 7.0/1.5,
+    bounds = sheet.BoundingBox(radius=0.8))
+
+# Sheets, connections, and their parameters
+topo.sim['Retina'] = sheet.GeneratorSheet(input_generator=gaussian_generator,
+    nominal_bounds=sheet.BoundingBox(radius=0.6),
+    period=1.0,phase=0.05,nominal_density=p.retina_density)
+
+topo.sim['V1'] = sheet.CFSheet(nominal_density=p.cortex_density,
+    nominal_bounds=sheet.BoundingBox(radius=0.5),
+    output_fns=[transferfn.PiecewiseLinear(lower_bound=0,upper_bound=1.0)])
+    
+#Disabling learning
+#topo.sim['V1'].plastic=False
+
+if p.mpi:
+	cf_proj = connection_type=projection.MPI_CFProjection
+	import topo.base.pmi_init
+else:
+	cf_proj = connection_type=projection.CFProjection
+
+from topo.base.cf import CFPLF_Plugin
+
+
+import topo.transferfn
+import topo.transferfn.optimized
+import topo.learningfn
+import topo.learningfn.optimized
+
+topo.sim.connect(
+    'Retina','V1',name='Afferent',delay=0.05,
+    connection_type=cf_proj, 
+    weights_generator=pattern.random.Gaussian(),
+    nominal_bounds_template=sheet.BoundingBox(radius=0.2),
+    response_fn=responsefn.optimized.CFPRF_DotProduct_opt(),
+	learning_fn=learningfn.optimized.CFPLF_Hebbian_opt(),
+	weights_output_fns=[transferfn.optimized.CFPOF_DivisiveNormalizeL1_opt()],
+    learning_rate=200.0)
+
+    
+    
+    
+    
